@@ -14,6 +14,7 @@
       pages = move(pages, event);
     }, 300);
   }
+
 </script>
 
 <div
@@ -24,7 +25,7 @@
     {#each pages as page, index (page)}
       {@const sortable = createSortable({ id: "draggable-" + index, index })}
       <div {@attach sortable.attach}>
-        {#if "file_name" in page}
+        {#if "img_path" in page}
           <PageCardImg
             bind:flip={page.flip}
             {index}

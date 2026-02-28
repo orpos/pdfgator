@@ -12,6 +12,7 @@
 
   let selectedAll = $state(false);
   let pages = $state<(PDFPg | ImgPG)[]>([]);
+  let selectedCount = $derived(pages.filter((x) => x.selected).length);
   let addingPages = $state<boolean>(false);
 </script>
 
@@ -43,10 +44,10 @@
         {#if pages.length > 0}
           <div class="border-t border-border p-4">
             <Controls
-              {pages}
+              bind:pages
               {addingPages}
               pagesCount={pages.length}
-              selectedCount={pages.filter((x) => x.selected).length}
+              {selectedCount}
               onSelectAll={() => {
                 selectedAll = !selectedAll;
                 pages.forEach((page) => (page.selected = selectedAll));

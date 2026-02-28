@@ -49,7 +49,7 @@
       style={`transform: rotate(${Number.parseInt(String(flp))}deg)`}
     >
       <!-- svelte-ignore element_invalid_self_closing_tag -->
-      <img src={page.thumb} />
+      <img src={page.thumb_path} />
     </div>
 
     <!-- Page Index Badge -->
@@ -100,7 +100,7 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="h-[80vh] w-[90vw]">
     <Viewer>
-      <img src={page.thumb} />
+      <img src={page.thumb_path} />
     </Viewer>
   </Dialog.Content>
 </Dialog.Root>

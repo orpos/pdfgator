@@ -2,21 +2,23 @@ import type { PDFPageProxy } from "pdfjs-dist";
 
 export interface PDFPg {
   id: string;
-  fileIndex: number;
-  pageNumber: number;
+  // fileIndex: number;
   path: string;
+
+  doc: Promise<PDFPageProxy>;
+
+  // State
+  pageNumber: number;
   flip: number;
   selected: boolean;
-  document: PDFPageProxy;
-  prevData: File;
 }
 
 export interface ImgPG {
   id: string;
   img_path: string;
-  mime: string;
-  data: File;
-  thumb: string;
+  thumb_path: string;
+
+  // State
   flip: number;
   selected: boolean;
 }

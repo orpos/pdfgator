@@ -1,7 +1,9 @@
-# Tauri + SvelteKit + TypeScript
+# PDFGator
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+An program to modify, organize and compress pdfs
 
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+## Credits
+[GhostScript](https://www.ghostscript.com) for the compression system
+[QPDF](https://github.com/qpdf/qpdf) for the pdf modifying system
+[ImageMagick](https://github.com/ImageMagick/ImageMagick) for the image to pdf system
+[pdf.js](https://github.com/mozilla/pdf.js) for the pdf visualization system

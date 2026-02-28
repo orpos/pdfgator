@@ -15,14 +15,16 @@
   "dependencies": {
     "@dnd-kit/helpers": "^0.3.2",
     "@dnd-kit/svelte": "^0.3.2",
+    "@tanstack/svelte-virtual": "^3.13.19",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "~2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "~2",
+    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.3.0",
     "lucide-svelte": "^0.575.0",
-    "pdf-lib": "^1.17.1",
+    "mime-types": "^3.0.2",
     "pdf.js": "^0.1.0",
     "pdfjs-dist": "^5.4.624",
     "svelte-image-viewer": "^6.0.0"

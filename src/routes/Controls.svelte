@@ -1,11 +1,16 @@
 <script lang="ts">
   import Button from "$lib/components/ui/button/button.svelte";
-  import { Download, CheckSquare, Square } from "lucide-svelte";
-  import { resolveResource } from "@tauri-apps/api/path";
+  import {
+    CheckSquare,
+    Square,
+    Trash,
+    RotateCcw,
+    Merge,
+  } from "lucide-svelte";
+  import { resolveResource, tempDir } from "@tauri-apps/api/path";
   import type { ImgPG, PDFPg } from "./types";
-  import { degrees, PDFDocument } from "pdf-lib";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { readFile, remove, writeFile } from "@tauri-apps/plugin-fs";
+  import { readFile, remove, rename, writeFile } from "@tauri-apps/plugin-fs";
   import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
   import NativeSelect from "$lib/components/ui/native-select/native-select.svelte";
   import { fly } from "svelte/transition";
@@ -16,7 +21,7 @@
     onSelectAll,
     pagesCount,
     selectedCount,
-    pages,
+    pages = $bindable(),
     addingPages,
   }: {
     selectedCount: number;
@@ -28,9 +33,39 @@
 
   let statusText = $state("");
   let processing = $state(false);
-  let processedPages = $state(0);
+
   let shouldCompress = $state(false);
   let compressLevel = $state(0);
+
+  function formatRanges(nums: number[]) {
+    if (nums.length === 0) return "";
+
+    let result = [];
+    let start = nums[0];
+
+    for (let i = 0; i < nums.length; i++) {
+      const current = nums[i];
+      const next = nums[i + 1];
+      const diffToNext = next - current;
+      const isSequenceContinuing = Math.abs(diffToNext) === 1;
+      const isDirectionChanging =
+        i > 0 && next - current !== nums[i] - nums[i - 1];
+
+      if (
+        !isSequenceContinuing ||
+        (i < nums.length - 1 &&
+          isDirectionChanging &&
+          i > 0 &&
+          Math.abs(nums[i] - nums[i - 1]) === 1)
+      ) {
+        // End the range
+        result.push(start === current ? `${start}` : `${start}-${current}`);
+        start = next;
+      }
+    }
+
+    return result.join(",");
+  }
 
   async function onNewMerge() {
     try {
@@ -49,147 +84,119 @@
 
       let args = ["--empty", "--pages"];
 
-
+      let currentFile = "";
+      let nums = [];
+      let lastRotate = 0;
+      let toRemove = [];
+      let temp = await tempDir();
+      let i = 0;
+      let rotations: { [key: number]: number[] } = {};
       for (let page of pages) {
-        if ("file_name" in page) {
-          // image
-          continue
+        i++;
+        // if (lastRotate != page.flip) args.push("--rotate=+" + page.flip);
+        if (page.flip > 0) {
+          let cur = rotations[page.flip];
+          if (cur) {
+            cur.push(i);
+          } else {
+            rotations[page.flip] = [i];
+          }
         }
-        page.fileName;
+        let pth = "img_path" in page ? page.img_path : page.path;
+        if (currentFile != pth && nums.length > 0) {
+          args.push(currentFile);
+          args.push(formatRanges(nums));
+          nums = [];
+        }
+        if ("img_path" in page) {
+          // image
+          let path = temp + i + ".pdf";
+          toRemove.push(path);
+          console.log(
+            await Command.sidecar(
+              "binaries/magick",
+              [page.img_path, "-compress", "zip", path],
+              {
+                cwd: await resolveResource("./binaries"),
+              },
+            ).execute(),
+          );
+
+          args.push(path);
+          args.push("1");
+          lastRotate = page.flip;
+          continue;
+        }
+
+        nums.push(page.pageNumber + 1);
+        lastRotate = page.flip;
+        currentFile = page.path;
       }
+      args.push(currentFile);
+      args.push(formatRanges(nums));
 
       args.push("--");
+
+      for (let obj of Object.entries(rotations)) {
+        let key = obj[0];
+        let val = obj[1];
+        args.push(`--rotate=${key}:${formatRanges(val)}`);
+      }
+
       args.push(output);
+      console.log(
+        await Command.sidecar("binaries/qpdf", args, {
+          cwd: await resolveResource("./binaries"),
+        }).execute(),
+      );
+      if (shouldCompress) {
+        let level: string;
+        if (compressLevel == 1) {
+          level = "printer";
+        } else if (compressLevel == 2) {
+          level = "ebook";
+        } else {
+          level = "screen";
+        }
+        statusText = "Comprimindo...";
+        let child = await Command.sidecar(
+          "binaries/gs",
+          [
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            "-dNOPAUSE",
+            "-dQUIET",
+            "-dBATCH",
+            // Metadata Stripping
+            "-dDoThumbnails=false",
+            "-dCreateJobTicket=false",
+            "-dPreserveEmptyPages=false",
+            `-dPDFSETTINGS=/${level}`,
+            `-sOutputFile=${output.replace(".pdf", "_____comprimido.pdf")}`,
+            output,
+          ],
+          {
+            cwd: await resolveResource("./binaries"),
+          },
+        ).execute();
+
+        statusText = "Finalizando arquivo...";
+        await remove(output);
+        await rename(output.replace(".pdf", "_____comprimido.pdf"), output);
+        toast.success("Arquivo processado com sucesso");
+      }
     } finally {
       processing = false;
       statusText = "";
     }
   }
-
-  async function onMerge() {
-    try {
-      processing = true;
-      let newDocument = await PDFDocument.create({
-        updateMetadata: false,
-      });
-      let loaded: any = {};
-      for (let page of pages) {
-        if ("file_name" in page) {
-          // await newDocument.embed(page.thumb)
-          // newDocument.addPage();
-          console.log("new img");
-          console.log(page.thumb);
-
-          console.log(page.mime);
-          let img;
-          if (page.mime.endsWith("png")) {
-            img = await newDocument.embedPng(page.thumb);
-          } else {
-            img = await newDocument.embedJpg(page.thumb);
-          }
-          const { height, width } = img.scale(1);
-
-          const pg = newDocument.addPage([width, height]);
-          pg.drawImage(img, {
-            x: 0,
-            y: 0,
-            width,
-            height,
-          });
-          if (page.flip) {
-            pg.setRotation(degrees(page.flip));
-          }
-          continue;
-        }
-        if (!loaded[page.fileIndex]) {
-          statusText = "Carregando Arquivo PDF : " + page.fileName;
-          loaded[page.fileIndex] = await PDFDocument.load(
-            await page.prevData.arrayBuffer(),
-          );
-        }
-        processedPages += 1;
-        statusText = "Adicionando Pagina : " + page.id;
-        let thePage = newDocument.addPage(
-          (
-            await newDocument.copyPages(loaded[page.fileIndex!], [
-              page.pageNumber - 1,
-            ])
-          )[0],
-        );
-        if (page.flip) {
-          thePage.setRotation(degrees(page.flip));
-        }
-      }
-
-      const bytes = await newDocument.save();
-
-      let filePath = await save({
-        filters: [
-          {
-            name: "PDF",
-            extensions: ["pdf"],
-          },
-        ],
-        defaultPath: "file.pdf",
-      });
-
-      if (filePath) {
-        statusText = "Salvando...";
-        await writeFile(filePath, bytes);
-
-        if (shouldCompress) {
-          let level: string;
-          if (compressLevel == 1) {
-            level = "printer";
-          } else if (compressLevel == 2) {
-            level = "ebook";
-          } else {
-            level = "screen";
-          }
-          statusText = "Comprimindo...";
-          let child = await Command.sidecar(
-            "binaries/gs",
-            [
-              "-sDEVICE=pdfwrite",
-              "-dCompatibilityLevel=1.4",
-              "-dNOPAUSE",
-              "-dQUIET",
-              "-dBATCH",
-              // Metadata Stripping
-              "-dDoThumbnails=false",
-              "-dCreateJobTicket=false",
-              "-dPreserveEmptyPages=false",
-              `-dPDFSETTINGS=/${level}`,
-              `-sOutputFile=${filePath.replace(".pdf", "_____comprimido.pdf")}`,
-              filePath,
-            ],
-            {
-              cwd: await resolveResource("./binaries"),
-            },
-          ).execute();
-
-          statusText = "Finalizando arquivo...";
-          let fileData = await readFile(
-            filePath.replace(".pdf", "_____comprimido.pdf"),
-          );
-
-          // let document = await PDFDocument.load(fileData);
-          // document.setAuthor("A");
-          // document.setCreator("PDFGator(custom app)");
-          // document.setProducer("ghostscript, PDFGator and pdflib");
-          // statusText = "Salvando arquivo final...";
-          // let newData = await document.save();
-          // await writeFile(filePath, newData);
-          // statusText = "Tirando arquivo antigo...";
-          // await remove(filePath.replace(".pdf", "_____comprimido.pdf"));
-        }
-        toast.success("Arquivo criado com sucesso");
-      }
-    } finally {
-      processing = false;
-      statusText = "";
-      processedPages = 0;
-    }
+  function handleRotate() {
+    pages.forEach((page) => {
+      if (!page.selected) return;
+      let val = (page.flip + 90) % 360;
+      page.flip = val;
+    });
+    pages = [...pages]
   }
 </script>
 
@@ -211,10 +218,30 @@
   </Button>
 
   {#if selectedCount > 0}
-    <div class="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">
+    <div class="text-xs text-muted-foreground px-2 py-1 bg-muted rounded mt-2">
       {selectedCount} de {pagesCount} selecionada{selectedCount !== 1
         ? "s"
         : ""}
+    </div>
+    <div class="flex flex-row gap-4 items-center justify-center mb-16">
+      <Button
+        variant="destructive"
+        size="icon"
+        onclick={() => {
+          pages = pages.filter((x) => !x.selected);
+          for (let page of pages) {
+            page.selected = false;
+          }
+        }}
+      >
+        <Trash />
+      </Button>
+      <Button variant="outline" size="icon" onclick={handleRotate}>
+        <RotateCcw />
+      </Button>
+      <Button variant="default" size="icon" color="black">
+        <Merge />
+      </Button>
     </div>
   {/if}
 
@@ -238,7 +265,6 @@
     </div>
   {/if}
 
-  <progress value={processedPages / pages.length} />
   <p class="text-sm text-gray-600">{statusText}</p>
 
   <!-- Merge Button -->
@@ -246,7 +272,7 @@
     size="sm"
     variant="outline"
     class="w-full text-xs h-8"
-    onclick={onMerge}
+    onclick={onNewMerge}
     disabled={processing || addingPages}
   >
     {#if processing}

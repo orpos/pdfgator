@@ -10,6 +10,8 @@
   import { toast } from "svelte-sonner";
   import { save } from "@tauri-apps/plugin-dialog";
   import { writeFile } from "@tauri-apps/plugin-fs";
+  import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+  import { Skeleton } from "$lib/components/ui/skeleton";
   // import Dialog from "$lib/components/ui/dialog/dialog.svelte";
 
   let {
@@ -25,28 +27,30 @@
     flip: number;
     onRemove: () => any;
   } = $props();
-  let domRef: HTMLCanvasElement;
-
-  onMount(() => {
-    let viewport = page.document.getViewport({ scale: 0.43 });
-
-    domRef.width = Math.floor(viewport.width);
-    domRef.height = Math.floor(viewport.height);
-    domRef.style.width = Math.floor(viewport.width) + "px";
-    domRef.style.height = Math.floor(viewport.height) + "px";
-
-    page.document.render({
-      canvas: domRef,
-      viewport: viewport,
-    });
-  });
   let open = $state(false);
 
-  function renderImage(element: HTMLCanvasElement) {
-    let viewport = page.document.getViewport({ scale: 1 });
+  async function renderImage(element: HTMLCanvasElement) {
+    let doc = await page.doc;
+    let viewport = doc.getViewport({ scale: 1 });
     element.width = Math.floor(viewport.width);
     element.height = Math.floor(viewport.height);
-    page.document.render({
+    doc.render({
+      canvas: element,
+      viewport,
+    });
+  }
+
+  function renderPage(
+    element: HTMLCanvasElement,
+    data: {
+      doc: PDFPageProxy;
+      scale?: number;
+    },
+  ) {
+    let viewport = data.doc.getViewport({ scale: data.scale ?? 1 });
+    element.width = Math.floor(viewport.width);
+    element.height = Math.floor(viewport.height);
+    data.doc.render({
       canvas: element,
       viewport,
     });
@@ -69,7 +73,6 @@
   }
 
   let scale = $state("1.0");
-  let flp = $state(0);
 
   async function downloadInMime(mime: string, file: string) {
     const n = parseFloat(scale.replace(",", "."));
@@ -77,7 +80,8 @@
       return toast.error("Numero de escala invalido");
     }
 
-    const viewport = page.document.getViewport({ scale: n });
+    let doc = await page.doc;
+    const viewport = doc.getViewport({ scale: n });
 
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -85,7 +89,7 @@
     canvas.width = viewport.width;
 
     // Wait for rendering to complete
-    await page.document.render({
+    await doc.render({
       canvasContext: context!,
       viewport,
       canvas,
@@ -113,11 +117,17 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="relative group"
   oncontextmenu={(event) => {
     event.preventDefault();
     open = true;
+  }}
+  onclick={(event) => {
+    if (event.ctrlKey) {
+      isSelected = !isSelected;
+    }
   }}
 >
   <!-- Card Container -->
@@ -131,10 +141,19 @@
     <!-- Page Preview -->
     <div
       class="w-full h-full flex items-center justify-center p-2 transition-transform"
-      style={`transform: rotate(${Number.parseInt(String(flp))}deg)`}
+      style={`transform: rotate(${Number.parseInt(String(flip ?? 0))}deg)`}
     >
       <!-- svelte-ignore element_invalid_self_closing_tag -->
-      <canvas bind:this={domRef} />
+      {#await page.doc}
+        <Skeleton />
+      {:then doc}
+        <canvas
+          use:renderPage={{
+            doc,
+            scale: 0.43,
+          }}
+        />
+      {/await}
     </div>
 
     <!-- Page Index Badge -->
@@ -164,7 +183,6 @@
       class="flex-1 h-8 text-xs"
       onclick={() => {
         flip = ((flip ?? 0) + 90) % 360;
-        flp = flip;
       }}
       title="Virar página"
     >
@@ -184,8 +202,12 @@
         <h1 class="text-xl">Baixar</h1>
         <p>Escolha a maneira de baixar e a escala</p>
         <input bind:value={scale} />
-        <Button onclick={() => downloadInMime("image/png", "imagem.png")}> PNG </Button>
-        <Button onclick={() => downloadInMime("image/jpeg", "imagem.jpg")}> JPG </Button>
+        <Button onclick={() => downloadInMime("image/png", "imagem.png")}>
+          PNG
+        </Button>
+        <Button onclick={() => downloadInMime("image/jpeg", "imagem.jpg")}>
+          JPG
+        </Button>
       </Dialog.Content>
     </Dialog.Root>
     <Button
@@ -201,9 +223,20 @@
 </div>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="h-[80vh] w-[90vw]">
+  <Dialog.Content class="h-[80vh] w-[90vw] cursor-grab">
     <Viewer>
-      <canvas class="w-full h-full" use:renderImage></canvas>
+      {#await page.doc}
+        <Skeleton />
+      {:then doc}
+        <!-- svelte-ignore element_invalid_self_closing_tag -->
+        <canvas
+          class="w-full h-full"
+          use:renderPage={{
+            doc,
+            scale: 1,
+          }}
+        />
+      {/await}
     </Viewer>
   </Dialog.Content>
 </Dialog.Root>
