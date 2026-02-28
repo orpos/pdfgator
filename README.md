@@ -8,7 +8,7 @@ Você consegue mudar a ordem que as paginas aparecem
 
 ![move](https://github.com/user-attachments/assets/cd6d06ff-f65b-4901-b97d-2398b0b4a31e)
 
-### Visualizar
+### Visualizar ( aperte o botão direito na imagem )
 Você consegue visualizar a pagina de maneira dinamica
 
 ![view](https://github.com/user-attachments/assets/0a8aa83e-c02e-414d-8877-ae42c775feb7)
